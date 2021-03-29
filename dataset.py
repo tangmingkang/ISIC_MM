@@ -133,6 +133,7 @@ def get_df(kernel_type, out_dim, data_dir_2020,data_dir_2019,data_dir_2018, use_
 
     # 四个数据集都不包含重复图片，2018train在2019中完整出现过，2018val是新的数据集
     df_train = pd.read_csv(os.path.join(data_dir_2020, 'train.csv')) # label
+    df_fold = pd.read_csv('fold.csv')
     df_train['filepath'] = df_train['image_name'].apply(lambda x: os.path.join(data_dir_2020, 'jpeg/train', f'{x}.jpg')) # jpg path
     df_train['image'] = df_train['image_name']
     del df_train['image_name']
@@ -155,16 +156,16 @@ def get_df(kernel_type, out_dim, data_dir_2020,data_dir_2019,data_dir_2018, use_
     df_train3['filepath'] = df_train3['image'].apply(lambda x: os.path.join(data_dir_2018, 'ISIC2018_Task3_Training_Input', f'{x}.jpg')) # jpg path
     df_train3_val = pd.read_csv(os.path.join(data_dir_2018, 'ISIC2018_Task3_Validation_GroundTruth/ISIC2018_Task3_Validation_GroundTruth.csv')) # label
     df_train3_val['filepath'] = df_train3_val['image'].apply(lambda x: os.path.join(data_dir_2018, 'ISIC2018_Task3_Validation_Input', f'{x}.jpg')) # jpg path
-
+    
     # df_train=df_train['image']
     # df_train2=df_train2['image']
     # df_train=pd.concat([df_train,df_train2]).unique()
     # df_train3=df_train3['image'].unique()
     # df_train3_val=df_train3_val['image'].unique()
 
-    df_train['fold']=np.random.randint(15,size=len(df_train))
-    df_train2['fold']=np.random.randint(15,size=len(df_train2))
-    if 'fold1' in kernel_type:
+    # df_train['fold']=np.random.randint(15,size=len(df_train))
+    # df_train2['fold']=np.random.randint(15,size=len(df_train2))
+    if 'fold+' in kernel_type:
         foldmap = {
             8:0, 5:0, 11:0,
             7:1, 0:1, 6:1,
@@ -172,7 +173,7 @@ def get_df(kernel_type, out_dim, data_dir_2020,data_dir_2019,data_dir_2018, use_
             9:3, 1:3, 3:3,
             14:4, 2:4, 4:4,
         }
-    elif 'fold2' in kernel_type:
+    elif 'fold++' in kernel_type:
         foldmap = {i: i % 5 for i in range(15)}
     else:
         foldmap = {
@@ -182,8 +183,8 @@ def get_df(kernel_type, out_dim, data_dir_2020,data_dir_2019,data_dir_2018, use_
             3:3, 8:3, 11:3,
             6:4, 7:4, 14:4,
         }
-    df_train['fold'] = df_train['fold'].map(foldmap)
-    df_train2['fold']=df_train2['fold'].map(foldmap)
+    # df_train['fold'] = df_train['fold'].map(foldmap)
+    # df_train2['fold']=df_train2['fold'].map(foldmap)
 
     df_train['is_ext'] = 0
     df_train2['is_ext'] = 1
@@ -228,6 +229,7 @@ def get_df(kernel_type, out_dim, data_dir_2020,data_dir_2019,data_dir_2018, use_
     # class mapping
     diagnosis2idx = {d: idx for idx, d in enumerate(sorted(df_train.diagnosis.unique()))}
     df_train['target'] = df_train['diagnosis'].map(diagnosis2idx)
+    df_train['fold']=df_fold['fold']
+    df_train['fold'] = df_train['fold'].map(foldmap)
     mel_idx = diagnosis2idx['melanoma']
-
     return df_train, df_test, meta_features, n_meta_features, mel_idx # MM的id
