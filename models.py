@@ -3,7 +3,7 @@ import torch.nn as nn
 import geffnet
 from resnest.torch import resnest101
 from pretrainedmodels import se_resnext101_32x4d
-
+from functions import ReverseLayerF
 
 sigmoid = nn.Sigmoid()
 
@@ -26,10 +26,11 @@ class Swish_Module(nn.Module):
         return Swish.apply(x)
 
 
-class Effnet_Melanoma(nn.Module):
-    def __init__(self, enet_type, out_dim, n_meta_features=0, n_meta_dim=[512, 128], pretrained=False):
+class Effnet_Melanoma_DDAN(nn.Module):
+    def __init__(self, enet_type, out_dim, n_meta_features=0, n_meta_dim=[512, 128], pretrained=False, DDAN=False):
         super(Effnet_Melanoma, self).__init__()
         self.n_meta_features = n_meta_features
+        self.DANN = DANN
         self.enet = geffnet.create_model(enet_type, pretrained=pretrained)
         self.dropouts = nn.ModuleList([
             nn.Dropout(0.5) for _ in range(5)
@@ -46,6 +47,13 @@ class Effnet_Melanoma(nn.Module):
                 Swish_Module(),
             )
             in_ch += n_meta_dim[1]
+        if DDAN:
+            self.barrier_classifier = nn.Swquential(
+                nn.Linear(self.enet.classifier.in_features,100)
+                nn.BatchNorm1d(100)
+                nn.ReLU(True)
+                nn.Linear(100, 2)
+            )
         self.myfc = nn.Linear(in_ch, out_dim)
         self.enet.classifier = nn.Identity()
 
@@ -53,18 +61,24 @@ class Effnet_Melanoma(nn.Module):
         x = self.enet(x)
         return x
 
-    def forward(self, x, x_meta=None):
+    def forward(self, x, x_meta=None, alpha=0):
         x = self.extract(x).squeeze(-1).squeeze(-1)
         if self.n_meta_features > 0:
             x_meta = self.meta(x_meta)
             x = torch.cat((x, x_meta), dim=1)
+        if self.DANN:
+            barrier_x = ReverseLayerF.apply(x,alpha)
+            barrier_out = self.barrier_classifier(barrier_x)
         for i, dropout in enumerate(self.dropouts):
             if i == 0:
-                out = self.myfc(dropout(x))
+                class_out = self.myfc(dropout(x))
             else:
-                out += self.myfc(dropout(x))
+                class_out += self.myfc(dropout(x))
         out /= len(self.dropouts)
-        return out
+        if self.DANN:
+            return out,barrier_out
+        else:
+            return out 
 
 
 class Resnest_Melanoma(nn.Module):
