@@ -26,9 +26,9 @@ class Swish_Module(nn.Module):
         return Swish.apply(x)
 
 
-class Effnet_Melanoma_DDAN(nn.Module):
-    def __init__(self, enet_type, out_dim, n_meta_features=0, n_meta_dim=[512, 128], pretrained=False, DDAN=False):
-        super(Effnet_Melanoma, self).__init__()
+class Effnet_Melanoma_DANN(nn.Module):
+    def __init__(self, enet_type, out_dim, n_meta_features=0, n_meta_dim=[512, 128], DANN=False, pretrained=False):
+        super(Effnet_Melanoma_DANN, self).__init__()
         self.n_meta_features = n_meta_features
         self.DANN = DANN
         self.enet = geffnet.create_model(enet_type, pretrained=pretrained)
@@ -47,11 +47,11 @@ class Effnet_Melanoma_DDAN(nn.Module):
                 Swish_Module(),
             )
             in_ch += n_meta_dim[1]
-        if DDAN:
-            self.barrier_classifier = nn.Swquential(
-                nn.Linear(self.enet.classifier.in_features,100)
-                nn.BatchNorm1d(100)
-                nn.ReLU(True)
+        if DANN:
+            self.barrier_classifier = nn.Sequential(
+                nn.Linear(self.enet.classifier.in_features,100),
+                nn.BatchNorm1d(100),
+                nn.ReLU(True),
                 nn.Linear(100, 2)
             )
         self.myfc = nn.Linear(in_ch, out_dim)
@@ -74,11 +74,11 @@ class Effnet_Melanoma_DDAN(nn.Module):
                 class_out = self.myfc(dropout(x))
             else:
                 class_out += self.myfc(dropout(x))
-        out /= len(self.dropouts)
+        class_out /= len(self.dropouts)
         if self.DANN:
-            return out,barrier_out
+            return class_out,barrier_out
         else:
-            return out 
+            return class_out 
 
 
 class Resnest_Melanoma(nn.Module):

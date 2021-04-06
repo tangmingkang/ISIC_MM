@@ -46,8 +46,7 @@ class MelanomaDataset(Dataset):
             target = (torch.tensor(self.csv.iloc[index].target).long(),torch.tensor(self.csv.iloc[index].label).long())
         else:
             target = torch.tensor(self.csv.iloc[index].target).long()
-        else:
-            return data, target
+        return data, target
 
 
 
@@ -136,12 +135,10 @@ def get_meta_data(df_train, df_test):
 
 def get_df(kernel_type, out_dim, data_dir_2020,data_dir_2019,data_dir_2018, use_meta):
 
-    df_train_label = pd.read_csv('train_label.csv')
-    df_train_label['filepath'] = df_train_label['image_name'].apply(lambda x: os.path.join(data_dir_2020, 'jpeg/train', f'{x}.jpg')) # jpg path
-    df_train_label['image'] = df_train['image_name']
-    del df_train['image_name']
+    df_train = pd.read_csv('train_label.csv')
+    df_train['filepath'] = df_train['image_name'].apply(lambda x: os.path.join(data_dir_2020, 'jpeg/train', f'{x}.jpg')) # jpg path
 
-
+    df_train['fold']=np.random.randint(5,size=len(df_train))
     df_train['is_ext'] = 0
 
     df_train['diagnosis']  = df_train['diagnosis'].apply(lambda x: x.replace('seborrheic keratosis', 'BKL'))
@@ -154,7 +151,7 @@ def get_df(kernel_type, out_dim, data_dir_2020,data_dir_2019,data_dir_2018, use_
     df_train = df_train.reset_index(drop=True)
 
     # test data
-    df_test = pd.read_csv('test.csv') # label
+    df_test = pd.read_csv(os.path.join(data_dir_2020,'test.csv')) # label
     df_test['filepath'] = df_test['image_name'].apply(lambda x: os.path.join(data_dir_2020, 'jpeg/test', f'{x}.jpg')) # jpg path
     df_test['image'] = df_test['image_name']
     del df_test['image_name']
@@ -168,7 +165,5 @@ def get_df(kernel_type, out_dim, data_dir_2020,data_dir_2019,data_dir_2018, use_
     # class mapping
     diagnosis2idx = {d: idx for idx, d in enumerate(sorted(df_train.diagnosis.unique()))}
     df_train['target'] = df_train['diagnosis'].map(diagnosis2idx)
-    df_train['fold']=df_fold['fold']
-    df_train['fold'] = df_train['fold'].map(foldmap)
     mel_idx = diagnosis2idx['melanoma']
     return df_train, df_test, meta_features, n_meta_features, mel_idx # MM的id

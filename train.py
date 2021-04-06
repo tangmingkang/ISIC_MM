@@ -16,17 +16,17 @@ from torch.optim import lr_scheduler
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from util import GradualWarmupSchedulerV2
-import apex
-from apex import amp
+# import apex
+# from apex import amp
 from dataset2 import get_df, get_transforms, MelanomaDataset
-from models import Effnet_Melanoma, Resnest_Melanoma, Seresnext_Melanoma
+from models import Effnet_Melanoma_DANN, Resnest_Melanoma, Seresnext_Melanoma
 
 
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model-dir', type=str, default='./weights')
     parser.add_argument('--log-dir', type=str, default='./logs')
-    parser.add_argument('--CUDA_VISIBLE_DEVICES', type=str, default='0,1')
+    parser.add_argument('--CUDA_VISIBLE_DEVICES', type=str, default='0')
     parser.add_argument('--enet-type', type=str, default='tf_efficientnet_b4_ns')
     parser.add_argument('--kernel-type', type=str,default="tf_efficientnet_b4_ns_size512_outdim9_meta_bs16_epoch15") #??
     parser.add_argument('--data-dir-2019', type=str, default='/home/data/ISIC/ISIC2019/')
@@ -34,15 +34,15 @@ def get_args():
     parser.add_argument('--data-dir-2018', type=str, default='/home/data/ISIC/ISIC2018_Task3/')
     parser.add_argument('--out-dim', type=int, default=9)
     parser.add_argument('--use-meta', action='store_true',default=False)
-    parser.add_argument('--image-size', type=int, default=512) # resize后的图像大小
+    parser.add_argument('--image-size', type=int, default=256) # resize后的图像大小
     parser.add_argument('--fold', type=str, default='0')
     parser.add_argument('--DEBUG', default=True)
-    parser.add_argument('--batch-size', type=int, default=64)
+    parser.add_argument('--batch-size', type=int, default=2)
     parser.add_argument('--n-meta-dim', type=str, default='512,128')
     parser.add_argument('--init-lr', type=float, default=3e-5)
     parser.add_argument('--n-epochs', type=int, default=15)
     parser.add_argument('--use-amp', default=False)
-    parser.add_argument('--num-workers', type=int, default=32)
+    parser.add_argument('--num-workers', type=int, default=2)
     parser.add_argument('--DANN', default=True)
     args, _ = parser.parse_known_args()
     return args
@@ -131,11 +131,13 @@ def val_epoch(model, loader, mel_idx, is_ext=None, n_test=1, get_output=False):
         else:
             class_acc = (CLASS_PROBS.argmax(1) == CLASS_TARGETS).mean() * 100.
             class_auc = roc_auc_score((CLASS_TARGETS == mel_idx).astype(float), CLASS_PROBS[:, mel_idx])
-            class_auc_20 = roc_auc_score((CLASS_TARGETS[is_ext == 0] == mel_idx).astype(float), CLASS_PROBS[is_ext == 0, mel_idx])
+            # class_auc_20 = roc_auc_score((CLASS_TARGETS[is_ext == 0] == mel_idx).astype(float), CLASS_PROBS[is_ext == 0, mel_idx])
+            class_auc_20 = class_auc
             # 这里存疑
             barrier_acc = (BARRIER_PROBS.argmax(1) == BARRIER_TARGETS).mean() * 100.
-            barrier_auc = roc_auc_score((BARRIER_TARGETS == 0).astype(float), BARRIER_PROBS)
-            barrier_auc_20 = roc_auc_score((BARRIER_TARGETS[is_ext == 0] == 0).astype(float), BARRIER_PROBS)
+            barrier_auc = roc_auc_score((BARRIER_TARGETS == 0).astype(float), BARRIER_PROBS[:, 0])
+            # barrier_auc_20 = roc_auc_score((BARRIER_TARGETS[is_ext == 0] == 0).astype(float), BARRIER_PROBS)
+            barrier_auc_20 = barrier_auc
             return class_val_loss, class_acc, class_auc, class_auc_20, barrier_val_loss, barrier_acc, barrier_auc, barrier_auc_20
     else:
         with torch.no_grad():
@@ -178,7 +180,8 @@ def val_epoch(model, loader, mel_idx, is_ext=None, n_test=1, get_output=False):
         else:
             class_acc = (CLASS_PROBS.argmax(1) == CLASS_TARGETS).mean() * 100.
             class_auc = roc_auc_score((CLASS_TARGETS == mel_idx).astype(float), CLASS_PROBS[:, mel_idx])
-            class_auc_20 = roc_auc_score((CLASS_TARGETS[is_ext == 0] == mel_idx).astype(float), CLASS_PROBS[is_ext == 0, mel_idx])
+            class_auc_20 = class_auc
+            # class_auc_20 = roc_auc_score((CLASS_TARGETS[is_ext == 0] == mel_idx).astype(float), CLASS_PROBS[is_ext == 0, mel_idx])
             return class_val_loss, class_acc, class_auc, class_auc_20
           
 
@@ -197,6 +200,7 @@ def train_epoch(model, loader, optimizer):
                 data, meta, target_class, target_barrier = data.to(device), meta.to(device), target_class.to(device), target_barrier.to(device)
                 class_out,barrier_out = model(data, meta)
             else:
+                target_class, target_barrier = target
                 data, target_class, target_barrier = data.to(device), target_class.to(device), target_barrier.to(device)
                 class_out,barrier_out = model(data)        
             class_loss = class_criterion(class_out, target_class)
@@ -238,14 +242,14 @@ def run(fold, df, meta_features, n_meta_features, transforms_train, transforms_v
 
     if args.DEBUG:
         args.n_epochs = 2
-        df_train = df[df['fold'] != fold].sample(args.batch_size * 4)
-        df_valid = df[df['fold'] == fold].sample(args.batch_size * 4)
+        df_train = df[df['fold'] != fold].sample(args.batch_size * 3)
+        df_valid = df[df['fold'] == fold].sample(args.batch_size * 3)
     else:
         df_train = df[df['fold'] != fold]
         df_valid = df[df['fold'] == fold]
 
-    dataset_train = MelanomaDataset(df_train, 'train', meta_features, transform=transforms_train)
-    dataset_valid = MelanomaDataset(df_valid, 'valid', meta_features, transform=transforms_val)
+    dataset_train = MelanomaDataset(df_train, 'train', meta_features, transform=transforms_train, DANN=args.DANN)
+    dataset_valid = MelanomaDataset(df_valid, 'valid', meta_features, transform=transforms_val, DANN=args.DANN)
     train_loader = torch.utils.data.DataLoader(dataset_train, batch_size=args.batch_size, sampler=RandomSampler(dataset_train), num_workers=args.num_workers) # 随机不重复采样 
     valid_loader = torch.utils.data.DataLoader(dataset_valid, batch_size=args.batch_size, num_workers=args.num_workers)
     model = ModelClass(
@@ -253,7 +257,7 @@ def run(fold, df, meta_features, n_meta_features, transforms_train, transforms_v
         n_meta_features=n_meta_features,
         n_meta_dim=[int(nd) for nd in args.n_meta_dim.split(',')],
         out_dim=args.out_dim,
-        DANN=args.DANN
+        DANN=args.DANN,
         pretrained=True
     )
     ###############
@@ -308,11 +312,11 @@ def run(fold, df, meta_features, n_meta_features, transforms_train, transforms_v
             if class_auc > auc_max:
                 print('auc_max ({:.6f} --> {:.6f}). Saving model ...'.format(auc_max, class_auc))
                 torch.save(model.state_dict(), model_file)
-                auc_max = auc
+                auc_max = class_auc
             if class_auc_20 > auc_20_max:
                 print('auc_20_max ({:.6f} --> {:.6f}). Saving model ...'.format(auc_20_max, class_auc_20))
                 torch.save(model.state_dict(), model_file2)
-                auc_20_max = auc_20
+                auc_20_max = class_auc_20
         else:
             class_val_loss, class_acc, class_auc, class_auc_20 = val_epoch(model, valid_loader, mel_idx, is_ext=df_valid['is_ext'].values)
 
@@ -359,8 +363,8 @@ if __name__ == '__main__':
         ModelClass = Resnest_Melanoma
     elif args.enet_type == 'seresnext101':
         ModelClass = Seresnext_Melanoma
-    elif 'efficientnet' in args.enet_types:
-        ModelClass = Effnet_Melanoma
+    elif 'efficientnet' in args.enet_type:
+        ModelClass = Effnet_Melanoma_DANN
     else:
         raise NotImplementedError()
 
