@@ -1,0 +1,6 @@
+Tue Apr  6 17:58:09 2021 Epoch 1, lr: 0.0000300, train loss: 2.94191, class valid loss: 2.15585, acc: 16.6667, auc: 0.555556, auc_20: 0.555556.
+Tue Apr  6 17:58:09 2021 Epoch 1, lr: 0.0000300, train loss: 2.94191, barrier valid loss: 0.69544, acc: 50.0000, auc: 0.666667, auc_20: 0.666667.
+Tue Apr  6 18:01:12 2021 Epoch 1, lr: 0.0000300, train loss: 2.94191, class valid loss: 2.15585, acc: 16.6667, auc: 0.555556, auc_20: 0.555556.
+Tue Apr  6 18:01:12 2021 Epoch 1, lr: 0.0000300, train loss: 2.94191, barrier valid loss: 0.69544, acc: 50.0000, auc: 0.666667, auc_20: 0.666667.
+Tue Apr  6 18:01:39 2021 Epoch 2, lr: 0.0003000, train loss: 2.90158, class valid loss: 2.04996, acc: 33.3333, auc: 0.333333, auc_20: 0.333333.
+Tue Apr  6 18:01:39 2021 Epoch 2, lr: 0.0003000, train loss: 2.90158, barrier valid loss: 0.69755, acc: 50.0000, auc: 0.444444, auc_20: 0.444444.
