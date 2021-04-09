@@ -16,8 +16,8 @@ from torch.optim import lr_scheduler
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from util import GradualWarmupSchedulerV2
-import apex
-from apex import amp
+# import apex
+# from apex import amp
 from dataset import get_df, get_transforms, MelanomaDataset
 from models import Effnet_Melanoma, Resnest_Melanoma, Seresnext_Melanoma
 
@@ -28,16 +28,17 @@ def get_args():
     parser.add_argument('--log-dir', type=str, default='./logs')
     parser.add_argument('--CUDA_VISIBLE_DEVICES', type=str, default='4')
     parser.add_argument('--enet-type', type=str, default='efficientnet_b3')
-    parser.add_argument('--kernel-type', type=str,default="efficientnet_b3_size512_outdim9_usemeta_batch16_epoch15") #??
+    parser.add_argument('--kernel-type', type=str,
+                        default="efficientnet_b3_size512_outdim9_usemeta_batch16_epoch15")  # ??
     parser.add_argument('--data-dir-2019', type=str, default='/home/data/ISIC/ISIC2019/')
     parser.add_argument('--data-dir-2020', type=str, default='/home/data/ISIC/ISIC2020/')
     parser.add_argument('--data-dir-2018', type=str, default='/home/data/ISIC/ISIC2018_Task3/')
     parser.add_argument('--out-dim', type=int, default=9)
-    parser.add_argument('--use-meta', action='store_true',default=True)
-    parser.add_argument('--image-size', type=int, default=512) # resize后的图像大小
-    parser.add_argument('--fold', type=str, default='0,1,2,3,4')
-    parser.add_argument('--DEBUG', default=False)
-    parser.add_argument('--batch-size', type=int, default=64)
+    parser.add_argument('--use-meta', action='store_true', default=True)
+    parser.add_argument('--image-size', type=int, default=512)  # resize后的图像大小
+    parser.add_argument('--fold', type=str, default='0')
+    parser.add_argument('--DEBUG', default=True)
+    parser.add_argument('--batch-size', type=int, default=16)
     parser.add_argument('--n-meta-dim', type=str, default='512,128')
     parser.add_argument('--init-lr', type=float, default=3e-5)
     parser.add_argument('--n-epochs', type=int, default=15)
@@ -45,8 +46,9 @@ def get_args():
     parser.add_argument('--num-workers', type=int, default=32)
     args, _ = parser.parse_known_args()
     return args
-def get_trans(img, I):
 
+
+def get_trans(img, I):
     if I >= 4:
         img = img.transpose(2, 3)
     if I % 4 == 0:
@@ -60,7 +62,6 @@ def get_trans(img, I):
 
 
 def val_epoch(model, loader, mel_idx, is_ext=None, n_test=1, get_output=False):
-
     model.eval()
     val_loss = []
     LOGITS = []
@@ -68,7 +69,7 @@ def val_epoch(model, loader, mel_idx, is_ext=None, n_test=1, get_output=False):
     TARGETS = []
     with torch.no_grad():
         for (data, target) in tqdm(loader):
-            
+
             if args.use_meta:
                 data, meta = data
                 data, meta, target = data.to(device), meta.to(device), target.to(device)
@@ -112,23 +113,21 @@ def val_epoch(model, loader, mel_idx, is_ext=None, n_test=1, get_output=False):
         return val_loss, acc, auc, auc_20
 
 
-
 def train_epoch(model, loader, optimizer):
-
     model.train()
     train_loss = []
     bar = tqdm(loader)
-    for (data, target) in bar: # [tensor(batchsize, 3, 512, 512),tensor(batchsize, 14)]  tensor(2)
+    for (data, target) in bar:  # [tensor(batchsize, 3, 512, 512),tensor(batchsize, 14)]  tensor(2)
         optimizer.zero_grad()
-        
+
         if args.use_meta:
             data, meta = data
             data, meta, target = data.to(device), meta.to(device), target.to(device)
             logits = model(data, meta)
         else:
             data, target = data.to(device), target.to(device)
-            logits = model(data)        
-        
+            logits = model(data)
+
         loss = criterion(logits, target)
 
         if not args.use_amp:
@@ -137,7 +136,7 @@ def train_epoch(model, loader, optimizer):
             with amp.scale_loss(loss, optimizer) as scaled_loss:
                 scaled_loss.backward()
 
-        if args.image_size in [896,576]:
+        if args.image_size in [896, 576]:
             torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         optimizer.step()
 
@@ -151,7 +150,6 @@ def train_epoch(model, loader, optimizer):
 
 
 def run(fold, df, meta_features, n_meta_features, transforms_train, transforms_val, mel_idx):
-
     if args.DEBUG:
         args.n_epochs = 5
         df_train = df[df['fold'] != fold].sample(args.batch_size * 5)
@@ -162,7 +160,9 @@ def run(fold, df, meta_features, n_meta_features, transforms_train, transforms_v
 
     dataset_train = MelanomaDataset(df_train, 'train', meta_features, transform=transforms_train)
     dataset_valid = MelanomaDataset(df_valid, 'valid', meta_features, transform=transforms_val)
-    train_loader = torch.utils.data.DataLoader(dataset_train, batch_size=args.batch_size, sampler=RandomSampler(dataset_train), num_workers=args.num_workers) # 随机不重复采样 
+    train_loader = torch.utils.data.DataLoader(dataset_train, batch_size=args.batch_size,
+                                               sampler=RandomSampler(dataset_train),
+                                               num_workers=args.num_workers)  # 随机不重复采样
     valid_loader = torch.utils.data.DataLoader(dataset_valid, batch_size=args.batch_size, num_workers=args.num_workers)
     model = ModelClass(
         args.enet_type,
@@ -177,7 +177,7 @@ def run(fold, df, meta_features, n_meta_features, transforms_train, transforms_v
 
     auc_max = 0.
     auc_20_max = 0.
-    model_file  = os.path.join(args.model_dir, f'{args.kernel_type}_best_fold{fold}.pth')
+    model_file = os.path.join(args.model_dir, f'{args.kernel_type}_best_fold{fold}.pth')
     model_file2 = os.path.join(args.model_dir, f'{args.kernel_type}_best_20_fold{fold}.pth')
     model_file3 = os.path.join(args.model_dir, f'{args.kernel_type}_final_fold{fold}.pth')
 
@@ -186,14 +186,15 @@ def run(fold, df, meta_features, n_meta_features, transforms_train, transforms_v
         model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
     if DP:
         model = nn.DataParallel(model)
-#     scheduler_cosine = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.n_epochs - 1)
+    #     scheduler_cosine = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.n_epochs - 1)
     scheduler_cosine = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, args.n_epochs - 1)
-    scheduler_warmup = GradualWarmupSchedulerV2(optimizer, multiplier=10, total_epoch=1, after_scheduler=scheduler_cosine)
-    
+    scheduler_warmup = GradualWarmupSchedulerV2(optimizer, multiplier=10, total_epoch=1,
+                                                after_scheduler=scheduler_cosine)
+
     print(len(dataset_train), len(dataset_valid))
     for epoch in range(1, args.n_epochs + 1):
         print(time.ctime(), f'Epoch {epoch}', f'Fold {fold}')
-#         scheduler_warmup.step(epoch - 1)
+        #         scheduler_warmup.step(epoch - 1)
 
         train_loss = train_epoch(model, train_loader, optimizer)
         val_loss, acc, auc, auc_20 = val_epoch(model, valid_loader, mel_idx, is_ext=df_valid['is_ext'].values)
@@ -203,9 +204,9 @@ def run(fold, df, meta_features, n_meta_features, transforms_train, transforms_v
         with open(os.path.join(args.log_dir, f'log_{args.kernel_type}.txt'), 'a') as appender:
             appender.write(content + '\n')
 
-        scheduler_warmup.step()    
-        if epoch==2: scheduler_warmup.step() # bug workaround   
-            
+        scheduler_warmup.step()
+        if epoch == 2: scheduler_warmup.step()  # bug workaround
+
         if auc > auc_max:
             print('auc_max ({:.6f} --> {:.6f}). Saving model ...'.format(auc_max, auc))
             torch.save(model.state_dict(), model_file)
@@ -217,6 +218,7 @@ def run(fold, df, meta_features, n_meta_features, transforms_train, transforms_v
 
     torch.save(model.state_dict(), model_file3)
 
+
 def set_seed(seed=0):
     random.seed(seed)
     np.random.seed(seed)
@@ -224,6 +226,7 @@ def set_seed(seed=0):
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
+
 
 def main():
     df, df_test, meta_features, n_meta_features, mel_idx = get_df(
